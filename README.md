@@ -1,27 +1,26 @@
-# Frontend IPSS - Aplicación Móvil con React Native y Expo
+# Frontend IPSS - Aplicacion Movil con React Native y Expo
 
-Aplicación móvil nativa multiplataforma para gestionar tareas construida con React Native, Expo y TypeScript.
+Aplicacion movil nativa multiplataforma para gestionar notas construida con React Native, Expo y TypeScript.
 
-## 📋 Descripción
+## Descripcion
 
-Aplicación IPSS (Sistema de Gestión de Tareas) que permite a los usuarios:
-- Ver lista de tareas en tiempo real
-- Crear nuevas tareas
-- Marcar tareas como completadas
-- Editar tareas existentes
-- Eliminar tareas
+Aplicacion IPSS (Sistema de Gestion de Notas) que permite a los usuarios:
+- Ver lista de notas en tiempo real
+- Crear nuevas notas
+- Editar notas existentes
+- Eliminar notas
 - Interfaz intuitiva y responsiva
 
-## 🚀 Características
+## Caracteristicas
 
 - **Framework**: React Native con Expo
-- **Navegación**: Expo Router
+- **Navegacion**: Expo Router
 - **Lenguaje**: TypeScript
 - **Plataformas**: Android, iOS, Web
-- **Conexión**: API REST con backend Hono
+- **Conexion**: API REST con backend Hono
 - **Estilos**: Sistema de tema adaptable
 
-## 📦 Requisitos Previos
+## Requisitos Previos
 
 - Node.js 18+
 - npm o yarn
@@ -29,7 +28,7 @@ Aplicación IPSS (Sistema de Gestión de Tareas) que permite a los usuarios:
 - Android Studio o Xcode (para desarrollo nativo)
 - Dispositivo Android/iOS o emulador
 
-## 🔧 Instalación
+## Instalacion
 
 1. Clonar el repositorio:
 ```bash
@@ -42,7 +41,7 @@ cd frontend-ipss
 npm install
 ```
 
-## ▶️ Ejecución
+## Ejecucion
 
 ### En Computadora (Expo Go)
 
@@ -50,11 +49,11 @@ npm install
 npm start
 ```
 
-Esto abrirá Expo DevTools. Puedes:
+Esto abrira Expo DevTools. Puedes:
 - Presionar `a` para abrir en Android
 - Presionar `i` para abrir en iOS
 - Presionar `w` para abrir en Web
-- Escanear código QR con dispositivo Android (Expo Go) o iOS (Cámara/Expo Go)
+- Escanear codigo QR con dispositivo Android (Expo Go) o iOS (Camara/Expo Go)
 
 ### En Dispositivo Android
 
@@ -74,51 +73,29 @@ npm run ios
 npm run web
 ```
 
-## 🔗 Configuración de Conexión al Backend
+## Configuracion de Conexion al Backend
 
 Para conectar con el backend, configura la variable de entorno:
 
-### En Windows (PowerShell)
-```powershell
-$env:EXPO_PUBLIC_API_URL="http://TU_IP_LOCAL:3000"
-npm start
-```
-
-### En Linux/Mac (Bash)
 ```bash
-export EXPO_PUBLIC_API_URL="http://TU_IP_LOCAL:3000"
+export EXPO_PUBLIC_API_URL="http://localhost:3000"
 npm start
 ```
 
-### Obtener tu IP Local
+O en una sola linea:
 
-**Windows**:
-```powershell
-ipconfig
-```
-Busca "IPv4 Address" bajo tu adaptador de red activo
-
-**Linux/Mac**:
 ```bash
-ifconfig
-```
-Busca "inet" en tu interfaz de red
-
-### Ejemplo
-Si tu IP es `192.168.1.50`:
-```powershell
-$env:EXPO_PUBLIC_API_URL="http://192.168.1.50:3000"
-npm start
+EXPO_PUBLIC_API_URL="http://localhost:3000" npm start
 ```
 
-## 📁 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 frontend-ipss/
 ├── app/
-│   ├── _layout.tsx           # Layout raíz
-│   ├── +html.tsx             # Configuración HTML web
-│   ├── +not-found.tsx        # Página 404
+│   ├── _layout.tsx           # Layout raiz
+│   ├── +html.tsx             # Configuracion HTML web
+│   ├── +not-found.tsx        # Pagina 404
 │   ├── login.tsx             # Pantalla de login
 │   ├── modal.tsx             # Modal
 │   └── (tabs)/
@@ -126,27 +103,27 @@ frontend-ipss/
 │       ├── index.tsx         # Tab principal
 │       └── two.tsx           # Tab secundario
 ├── components/
-│   ├── AuthContext.tsx       # Contexto de autenticación
+│   ├── AuthContext.tsx       # Contexto de autenticacion
 │   ├── Themed.tsx            # Componentes con tema
 │   ├── StyledText.tsx        # Texto personalizado
 │   ├── useColorScheme.ts     # Hook de esquema de color
 │   └── __tests__/            # Tests
 ├── constants/
-│   └── Colors.ts             # Colores de la aplicación
+│   └── Colors.ts             # Colores de la aplicacion
 ├── assets/
 │   ├── fonts/                # Fuentes personalizadas
-│   └── images/               # Imágenes y iconos
+│   └── images/               # Imagenes y iconos
 ├── package.json              # Dependencias
-├── tsconfig.json             # Configuración TypeScript
+├── tsconfig.json             # Configuracion TypeScript
 ├── expo-env.d.ts             # Tipos Expo
-├── app.json                  # Configuración Expo
+├── app.json                  # Configuracion Expo
 └── README.md                 # Este archivo
 ```
 
-## 🎨 Personalización
+## Personalizacion
 
 ### Temas de Color
-Modifica [constants/Colors.ts](constants/Colors.ts) para cambiar los colores de la aplicación:
+Modifica [constants/Colors.ts](constants/Colors.ts) para cambiar los colores de la aplicacion:
 
 ```typescript
 export const Colors = {
@@ -166,16 +143,16 @@ export const Colors = {
 ### Fuentes
 Agrega fuentes personalizadas en `assets/fonts/` e importa en tus componentes usando `expo-font`.
 
-## 🧪 Testing
+## Testing
 
 Ejecutar pruebas:
 ```bash
 npm test
 ```
 
-## 🚀 Deployment
+## Deployment
 
-### Construir para Producción
+### Construir para Produccion
 
 ```bash
 expo build:android    # Para APK
@@ -187,47 +164,59 @@ expo build:ios        # Para IPA
 expo publish
 ```
 
-## 🔌 API Backend
+## API Backend
 
-La aplicación se conecta a los siguientes endpoints:
+La aplicacion se conecta a los siguientes endpoints:
 
 - `GET /health` - Verificar estado del servidor
-- `GET /todos` - Obtener todas las tareas
-- `GET /todos/:id` - Obtener tarea por ID
-- `POST /todos` - Crear nueva tarea
-- `PUT /todos/:id` - Actualizar tarea
-- `DELETE /todos/:id` - Eliminar tarea
+- `GET /notes` - Obtener todas las notas
+- `GET /notes/:id` - Obtener nota por ID
+- `POST /notes` - Crear nueva nota
+- `PUT /notes/:id` - Actualizar nota
+- `DELETE /notes/:id` - Eliminar nota
 
-Ver [backend-ipss](../backend-ipss) para más detalles sobre la API.
+Ver [backend-ipss](../backend-ipss) para mas detalles sobre la API.
 
-## 🐛 Solución de Problemas
+## Solucion de Problemas
 
 ### La app no se conecta al backend
-- Verifica que PC y dispositivo estén en la misma red Wi-Fi
-- Confirma que el backend esté ejecutándose en `http://IP_LOCAL:3000`
-- Revisa la IP configurada en `EXPO_PUBLIC_API_URL`
+- Confirma que el backend este ejecutandose en `http://localhost:3000`
+- Revisa que la variable `EXPO_PUBLIC_API_URL` este configurada correctamente
+
+### El boton "Eliminar" no muestra confirmacion ni hace nada (Web)
+
+**Problema:** Al ejecutar la app con `npx expo start --web`, el boton "Eliminar" de las notas no mostraba ninguna caja de confirmacion ni ejecutaba ninguna accion.
+
+**Causa:** Se usaba `Alert.alert()` de React Native, que es un componente **nativo** de iOS/Android. En web (`react-native-web`), `Alert.alert` no renderiza botones personalizados ni ejecuta callbacks `onPress`. Solo muestra un `window.alert()` basico sin interaccion real.
+
+**Solucion:** Reemplazar `Alert.alert` por un `<Modal>` de React Native (que si funciona en web, iOS y Android). Se agrego:
+- Un estado `deletingNoteId` para controlar la visibilidad del modal de confirmacion
+- Un Modal con mensaje de confirmacion y botones "Cancelar" / "Eliminar"
+- La funcion `confirmDeleteNote()` que ejecuta el `DELETE` a la API y actualiza el estado
+
+**Aprendizaje:** No todos los componentes de React Native son compatibles con web. Antes de usar APIs nativas (`Alert`, `Share`, `Vibration`, etc.), verificar si tienen polyfill en `react-native-web` o reemplazarlas por alternativas web-compatibles como `Modal`, `window.confirm()`, o librerias como `react-native-web-alerts`.
 
 ### Errores de dependencias
 ```bash
 npm install --legacy-peer-deps
 ```
 
-### Limpiar caché
+### Limpiar cache
 ```bash
 expo start -c
 ```
 
-## 📚 Recursos
+## Recursos
 
-- [Documentación Expo](https://docs.expo.dev/)
+- [Documentacion Expo](https://docs.expo.dev/)
 - [React Native Docs](https://reactnative.dev/)
 - [Expo Router](https://docs.expo.dev/routing/introduction/)
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/)
 
-## 📄 Licencia
+## Licencia
 
 Este proyecto es privado
 
-## 👤 Autor
+## Autor
 
-Proyecto de Desarrollo de Aplicaciones Móvil
+Proyecto de Desarrollo de Aplicaciones Movil
