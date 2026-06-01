@@ -7,7 +7,6 @@ import Colors from '@/constants/Colors';
 import { useAuth } from '@/components/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
 
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
   color: string;
@@ -16,10 +15,10 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
-  const { user, signOut } = useAuth();
+  const { token, logout } = useAuth();
   const colorScheme = useColorScheme();
 
-  if (!user) {
+  if (!token) {
     return <Redirect href="/login" />;
   }
 
@@ -34,7 +33,7 @@ export default function TabLayout() {
         },
         headerShown: true,
         headerRight: () => (
-          <Pressable onPress={signOut} style={{ marginRight: 14, paddingVertical: 6 }}>
+          <Pressable onPress={logout} style={{ marginRight: 14, paddingVertical: 6 }}>
             <Text style={{ color: '#ff1100', fontSize: 14, fontWeight: '700' }}>Cerrar sesión</Text>
           </Pressable>
         ),

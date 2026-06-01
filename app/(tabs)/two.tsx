@@ -1,6 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { StyleSheet, Text, View } from 'react-native';
-
 import { useAuth } from '@/components/AuthContext';
 
 const demoMessages = [
@@ -10,7 +9,10 @@ const demoMessages = [
 ];
 
 export default function ProfileScreen() {
-  const { user } = useAuth();
+  const { email } = useAuth();
+  const nameFromEmail = email
+    ? email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1)
+    : 'Usuario';
 
   return (
     <View style={styles.screen}>
@@ -18,15 +20,12 @@ export default function ProfileScreen() {
         <View style={styles.avatar}>
           <FontAwesome name="user" size={42} color="#8CA0B8" />
         </View>
-        <Text style={styles.name}>{user?.name ?? 'Usuario'}</Text>
-        <Text style={styles.email}>{user?.email ?? 'sin-correo@demo.com'}</Text>
-        <Text style={styles.lastConnection}>
-          Ultima conexion: {user?.lastConnection ?? 'hace unos minutos'}
-        </Text>
+        <Text style={styles.name}>{nameFromEmail}</Text>
+        <Text style={styles.email}>{email ?? 'sin-correo@demo.com'}</Text>
       </View>
 
       <View style={styles.messagesCard}>
-        <Text style={styles.messagesTitle}>Ultimos mensajes</Text>
+        <Text style={styles.messagesTitle}>Últimos mensajes</Text>
         {demoMessages.map((message) => (
           <View key={message.id} style={styles.messageItem}>
             <Text style={styles.messageSender}>{message.title}</Text>
@@ -73,11 +72,6 @@ const styles = StyleSheet.create({
     color: '#49617A',
     fontSize: 14,
     marginTop: 6,
-  },
-  lastConnection: {
-    color: '#60768D',
-    fontSize: 13,
-    marginTop: 8,
   },
   messagesCard: {
     backgroundColor: '#FFFFFF',

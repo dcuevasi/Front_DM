@@ -6,10 +6,10 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
-import { AuthProvider } from '@/components/AuthContext';
+import { AuthContext, useSyncTokenGetter } from '@/components/AuthContext';
+import { useAuthContext } from '@/hooks/useAuth';
 
 export {
-  // Catch any errors thrown by the Layout component.
   ErrorBoundary,
 } from 'expo-router';
 
@@ -17,8 +17,13 @@ export const unstable_settings = {
   initialRouteName: 'login',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+function AuthProvider({ children }: { children: React.ReactNode }) {
+  const auth = useAuthContext();
+  useSyncTokenGetter(auth.token);
+  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
+}
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -26,7 +31,6 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);

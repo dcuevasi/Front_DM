@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "La app necesita acceso a la cámara para adjuntar fotos a las notas.",
+          "microphonePermission": "La app no usa el micrófono."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "La app necesita tu ubicación para registrar dónde creaste la nota."
+        }
+      ]
+    ],
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "La app necesita acceso a la cámara para adjuntar fotos a las notas.",
+        "NSLocationWhenInUseUsageDescription": "La app necesita tu ubicación para registrar dónde creaste la nota."
+      }
+    },
+    "android": {
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION"
+      ]
+    }
+  }
+}

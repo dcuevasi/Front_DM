@@ -1,30 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-
 import { useAuth } from '@/components/AuthContext';
+import { useNotes } from '@/hooks/useNotes';
+import { useImagePicker } from '@/hooks/useImagePicker';
+import { useLocation } from '@/hooks/useLocation';
 import { api } from '@/services/api';
-import type { Category, Note } from '@/types/note';
+import type { Category, UpdateNoteInput } from '@/types/note';
 
 export default function HomeScreen() {
-  const { user } = useAuth();
-  const name = user?.name ?? 'Usuario';
+  const { email, token } = useAuth();
+  const { notes, loading, error, loadNotes, createNote, updateNote, deleteNote } = useNotes();
+  const { imageUri, error: imageError, pickFromGallery, takePhoto, clearImage } = useImagePicker();
+  const { location, loading: locationLoading, error: locationError, getCurrentLocation, clearLocation } = useLocation();
 
-  const [notes, setNotes] = useState<Note[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
 
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
@@ -33,342 +34,409 @@ export default function HomeScreen() {
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
 
-  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [editingNote, setEditingNote] = useState<{
+    id: number; title: string; content: string; categoryId: number;
+  } | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
-  const [editCategoryId, setEditCategoryId] = useState<number | null>(null);
+  const [editCategoryId, setEditCategoryId] = useState<number>(0);
 
   const [deletingNoteId, setDeletingNoteId] = useState<number | null>(null);
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadCategories = useCallback(async () => {
+    if (!token) return;
     try {
-      setIsLoading(true);
-      setErrorMessage('');
-      const [notesData, categoriesData] = await Promise.all([
-        api.getNotes(),
-        api.getCategories(),
-      ]);
-      setNotes(notesData);
-      setCategories(categoriesData);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Error al cargar datos.');
-    } finally {
-      setIsLoading(false);
+      const data = await api.getCategories();
+      setCategories(data);
+    } catch { /* ignore */ }
+  }, [token]);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
+
+  const handleCreateCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    try {
+      const cat = await api.createCategory(name);
+      setCategories((prev) => [...prev, cat]);
+      setSelectedCategoryId(cat.id);
+      setNewCategoryName('');
+      setShowNewCategoryInput(false);
+    } catch {
+      Alert.alert('Error', 'No se pudo crear la categoria');
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const handleCreateNote = async () => {
-    const title = newTitle.trim();
-    const content = newContent.trim();
-
-    if (!title || !content || selectedCategoryId === null) {
-      Alert.alert('Campos requeridos', 'Completa título, contenido y categoría.');
+    if (!newTitle.trim() || !newContent.trim()) {
+      Alert.alert('Error', 'Titulo y contenido son obligatorios');
+      return;
+    }
+    if (!selectedCategoryId) {
+      Alert.alert('Error', 'Selecciona una categoria');
       return;
     }
 
+    setIsSaving(true);
     try {
-      setIsSaving(true);
-      const note = await api.createNote({
-        title,
-        content,
+      let finalImageUrl: string | undefined;
+
+      if (imageUri) {
+        const filename = imageUri.split('/').pop() ?? 'photo.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const mimeType = match ? `image/${match[1]}` : 'image/jpeg';
+        finalImageUrl = await api.uploadImage(imageUri, filename, mimeType);
+      }
+
+      await createNote({
+        title: newTitle.trim(),
+        content: newContent.trim(),
         categoryId: selectedCategoryId,
+        imageUrl: finalImageUrl,
+        latitude: location?.latitude,
+        longitude: location?.longitude,
       });
-      setNotes((prev) => [note, ...prev]);
+
       setNewTitle('');
       setNewContent('');
       setSelectedCategoryId(null);
-    } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Error creando la nota.');
+      clearImage();
+      clearLocation();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudo crear la nota';
+      Alert.alert('Error', msg);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleCreateCategory = async () => {
-    const name = newCategoryName.trim();
-    if (!name) return;
-
-    try {
-      const category = await api.createCategory(name);
-      setCategories((prev) => [...prev, category]);
-      setSelectedCategoryId(category.id);
-      setNewCategoryName('');
-      setShowNewCategoryInput(false);
-    } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Error creando categoría.');
-    }
-  };
-
-  const handleDeleteNote = (id: number) => {
-    setDeletingNoteId(id);
-  };
-
-  const confirmDeleteNote = async () => {
-    if (deletingNoteId === null) return;
-    try {
-      await api.deleteNote(deletingNoteId);
-      setNotes((prev) => prev.filter((n) => n.id !== deletingNoteId));
-    } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Error eliminando nota.');
-    } finally {
-      setDeletingNoteId(null);
-    }
-  };
-
-  const openEditModal = (note: Note) => {
+  const handleEdit = (note: { id: number; title: string; content: string; categoryId: number }) => {
     setEditingNote(note);
     setEditTitle(note.title);
     setEditContent(note.content);
     setEditCategoryId(note.categoryId);
   };
 
-  const handleUpdateNote = async () => {
+  const handleSaveEdit = async () => {
     if (!editingNote) return;
-    const title = editTitle.trim();
-    const content = editContent.trim();
-
-    if (!title || !content || editCategoryId === null) {
-      Alert.alert('Campos requeridos', 'Completa título, contenido y categoría.');
-      return;
-    }
-
+    const data: UpdateNoteInput = {
+      title: editTitle.trim(),
+      content: editContent.trim(),
+      categoryId: editCategoryId,
+    };
     try {
-      setIsSaving(true);
-      const updated = await api.updateNote(editingNote.id, {
-        title,
-        content,
-        categoryId: editCategoryId,
-      });
-      setNotes((prev) => prev.map((n) => (n.id === editingNote.id ? updated : n)));
+      await updateNote(editingNote.id, data);
       setEditingNote(null);
-    } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Error actualizando nota.');
-    } finally {
-      setIsSaving(false);
+    } catch {
+      Alert.alert('Error', 'No se pudo actualizar la nota');
     }
   };
 
-  const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
+  const handleConfirmDelete = async () => {
+    if (deletingNoteId === null) return;
+    try {
+      await deleteNote(deletingNoteId);
+    } catch {
+      Alert.alert('Error', 'No se pudo eliminar la nota');
+    } finally {
+      setDeletingNoteId(null);
+    }
+  };
+
+  const name = email?.split('@')[0] ?? 'Usuario';
+  const displayName = name.charAt(0).toUpperCase() + name.slice(1);
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.title}>Bienvenido de vuelta, {name}</Text>
-      <Text style={styles.subtitle}>Organiza tus notas por categoría.</Text>
+      <Text style={styles.welcome}>Bienvenido de vuelta, {displayName}</Text>
 
-      <View style={styles.card}>
-        <ScrollView style={styles.formScroll} keyboardShouldPersistTaps="handled">
-          <TextInput
-            value={newTitle}
-            onChangeText={setNewTitle}
-            placeholder="Título de la nota"
-            placeholderTextColor="#6B7E95"
-            style={styles.input}
-          />
-          <TextInput
-            value={newContent}
-            onChangeText={setNewContent}
-            placeholder="Contenido de la nota"
-            placeholderTextColor="#6B7E95"
-            style={[styles.input, styles.contentInput]}
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-          />
-
-          <Pressable
-            onPress={() => setShowCategoryPicker(!showCategoryPicker)}
-            style={styles.categorySelector}>
-            <Text style={selectedCategory ? styles.categorySelectorText : styles.categorySelectorPlaceholder}>
-              {selectedCategory ? selectedCategory.name : 'Seleccionar categoría'}
-            </Text>
-            <Text style={styles.arrow}>{showCategoryPicker ? '▲' : '▼'}</Text>
+      {loading ? (
+        <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 40 }} />
+      ) : error ? (
+        <View style={styles.center}>
+          <Text style={styles.error}>{error}</Text>
+          <Pressable style={styles.retryBtn} onPress={loadNotes}>
+            <Text style={styles.retryText}>Reintentar</Text>
           </Pressable>
+        </View>
+      ) : (
+        <>
+          {/* CREATE FORM */}
+          <View style={styles.createCard}>
+            <TextInput
+              style={styles.input}
+              placeholder="Titulo de la nota"
+              placeholderTextColor="#9CA3AF"
+              value={newTitle}
+              onChangeText={setNewTitle}
+            />
+            <TextInput
+              style={[styles.input, styles.multiline]}
+              placeholder="Contenido"
+              placeholderTextColor="#9CA3AF"
+              multiline
+              value={newContent}
+              onChangeText={setNewContent}
+            />
 
-          {showCategoryPicker && (
-            <View style={styles.categoryDropdown}>
-              {categories.map((cat) => (
-                <Pressable
-                  key={cat.id}
-                  onPress={() => {
-                    setSelectedCategoryId(cat.id);
-                    setShowCategoryPicker(false);
-                  }}
-                  style={[
-                    styles.categoryOption,
-                    selectedCategoryId === cat.id && styles.categoryOptionSelected,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.categoryOptionText,
-                      selectedCategoryId === cat.id && styles.categoryOptionTextSelected,
-                    ]}>
-                    {cat.name}
-                  </Text>
-                </Pressable>
-              ))}
+            {/* Category picker */}
+            <Pressable
+              style={styles.categorySelector}
+              onPress={() => setShowCategoryPicker(!showCategoryPicker)}
+            >
+              <Text style={styles.categorySelectorText}>
+                {selectedCategoryId
+                  ? categories.find((c) => c.id === selectedCategoryId)?.name
+                  : 'Seleccionar categoria'}
+              </Text>
+            </Pressable>
 
-              {showNewCategoryInput ? (
-                <View style={styles.newCategoryRow}>
-                  <TextInput
-                    value={newCategoryName}
-                    onChangeText={setNewCategoryName}
-                    placeholder="Nueva categoría"
-                    placeholderTextColor="#6B7E95"
-                    style={[styles.input, styles.newCategoryInput]}
-                  />
-                  <Pressable onPress={handleCreateCategory} style={styles.addCategoryButton}>
-                    <Text style={styles.addCategoryButtonText}>OK</Text>
+            {showCategoryPicker && (
+              <View style={styles.categoryList}>
+                {[...categories]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((cat) => (
+                    <Pressable
+                      key={cat.id}
+                      style={[
+                        styles.categoryOption,
+                        selectedCategoryId === cat.id && styles.categoryOptionSelected,
+                      ]}
+                      onPress={() => {
+                        setSelectedCategoryId(cat.id);
+                        setShowCategoryPicker(false);
+                      }}
+                    >
+                      <Text style={styles.categoryOptionText}>{cat.name}</Text>
+                    </Pressable>
+                  ))}
+                {!showNewCategoryInput ? (
+                  <Pressable
+                    style={styles.addCategoryBtn}
+                    onPress={() => setShowNewCategoryInput(true)}
+                  >
+                    <Text style={styles.addCategoryText}>+ Nueva categoria</Text>
                   </Pressable>
-                </View>
-              ) : (
-                <Pressable
-                  onPress={() => setShowNewCategoryInput(true)}
-                  style={styles.newCategoryLink}>
-                  <Text style={styles.newCategoryLinkText}>+ Nueva categoría</Text>
-                </Pressable>
-              )}
+                ) : (
+                  <View style={styles.newCategoryRow}>
+                    <TextInput
+                      style={styles.newCategoryInput}
+                      placeholder="Nombre"
+                      placeholderTextColor="#9CA3AF"
+                      value={newCategoryName}
+                      onChangeText={setNewCategoryName}
+                      onSubmitEditing={handleCreateCategory}
+                    />
+                    <Pressable style={styles.saveCategoryBtn} onPress={handleCreateCategory}>
+                      <Text style={styles.saveCategoryText}>Guardar</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Image picker */}
+            <View style={styles.imageRow}>
+              <Pressable style={styles.imageBtn} onPress={takePhoto}>
+                <Text style={styles.imageBtnText}>Tomar foto</Text>
+              </Pressable>
+              <Pressable style={styles.imageBtn} onPress={pickFromGallery}>
+                <Text style={styles.imageBtnText}>Galeria</Text>
+              </Pressable>
             </View>
-          )}
 
-          <Pressable
-            onPress={handleCreateNote}
-            disabled={isSaving}
-            style={({ pressed }) => [
-              styles.addButton,
-              pressed && styles.addButtonPressed,
-              isSaving && styles.addButtonDisabled,
-            ]}>
-            <Text style={styles.addButtonText}>{isSaving ? 'Creando...' : 'Crear nota'}</Text>
-          </Pressable>
-        </ScrollView>
+            {imageError ? (
+              <Text style={styles.permissionError}>{imageError}</Text>
+            ) : imageUri ? (
+              <View style={styles.previewRow}>
+                <Image source={{ uri: imageUri }} style={styles.preview} />
+                <Pressable onPress={clearImage} style={styles.removeImageBtn}>
+                  <Text style={styles.removeImageText}>Quitar</Text>
+                </Pressable>
+              </View>
+            ) : null}
 
-        <Text style={styles.counterText}>{notes.length} nota{notes.length !== 1 ? 's' : ''}</Text>
+            {/* GPS */}
+            {!location ? (
+              <Pressable
+                style={[styles.gpsBtn, locationLoading && styles.gpsBtnLoading]}
+                onPress={getCurrentLocation}
+                disabled={locationLoading}
+              >
+                <Text style={styles.gpsBtnText}>
+                  {locationLoading ? 'Obteniendo ubicacion...' : 'Registrar ubicacion'}
+                </Text>
+              </Pressable>
+            ) : (
+              <View style={styles.locationRow}>
+                <Text style={styles.locationText}>Ubicacion registrada</Text>
+                <Pressable onPress={clearLocation}>
+                  <Text style={styles.removeImageText}>Quitar</Text>
+                </Pressable>
+              </View>
+            )}
 
-        {isLoading ? (
-          <View style={styles.centerState}>
-            <ActivityIndicator size="small" color="#1A4B8F" />
-          </View>
-        ) : errorMessage ? (
-          <View style={styles.centerState}>
-            <Text style={styles.errorText}>{errorMessage}</Text>
-            <Pressable onPress={loadData} style={styles.retryButton}>
-              <Text style={styles.retryButtonText}>Reintentar</Text>
+            {locationError ? (
+              <Text style={styles.permissionError}>{locationError}</Text>
+            ) : null}
+
+            <Pressable
+              style={[styles.createBtn, isSaving && styles.createBtnDisabled]}
+              onPress={handleCreateNote}
+              disabled={isSaving}
+            >
+              <Text style={styles.createBtnText}>
+                {isSaving ? 'Guardando...' : 'Crear nota'}
+              </Text>
             </Pressable>
           </View>
-        ) : (
+
+          {/* NOTES LIST */}
+          <Text style={styles.sectionTitle}>{notes.length} notas</Text>
           <FlatList
             data={notes}
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={<Text style={styles.emptyText}>Aún no tienes notas. ¡Crea la primera!</Text>}
-            renderItem={({ item }) => {
-              const cat = categories.find((c) => c.id === item.categoryId);
-              return (
-                <View style={styles.noteItem}>
-                  <View style={styles.noteHeader}>
-                    <Text style={styles.noteTitle} numberOfLines={1}>{item.title}</Text>
-                    {cat && (
-                      <View style={styles.categoryBadge}>
-                        <Text style={styles.categoryBadgeText}>{cat.name}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.noteContent} numberOfLines={2}>{item.content}</Text>
-                  <Text style={styles.noteDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
-                  <View style={styles.noteActions}>
-                    <Pressable onPress={() => openEditModal(item)} style={styles.editButton}>
-                      <Text style={styles.editButtonText}>Editar</Text>
-                    </Pressable>
-                    <Pressable onPress={() => handleDeleteNote(item.id)} style={styles.deleteButton}>
-                      <Text style={styles.deleteText}>Eliminar</Text>
-                    </Pressable>
-                  </View>
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            ListEmptyComponent={
+              <Text style={styles.empty}>No hay notas aun. Crea la primera!</Text>
+            }
+            renderItem={({ item }) => (
+              <View style={styles.noteCard}>
+                <View style={styles.noteHeader}>
+                  <Text style={styles.noteTitle} numberOfLines={1}>{item.title}</Text>
+                  {item.category && (
+                    <View style={styles.categoryBadge}>
+                      <Text style={styles.categoryBadgeText}>{item.category.name}</Text>
+                    </View>
+                  )}
                 </View>
-              );
-            }}
-          />
-        )}
-      </View>
 
-      <Modal visible={editingNote !== null} animationType="slide" transparent>
+                <Text style={styles.noteContent} numberOfLines={2}>{item.content}</Text>
+
+                {item.imageUrl ? (
+                  <Pressable onPress={() => setFullScreenImage(item.imageUrl)}>
+                    <View style={styles.noteImageContainer}>
+                      <Image source={{ uri: item.imageUrl }} style={styles.noteImage} />
+                      <View style={styles.viewFullOverlay}>
+                        <Text style={styles.viewFullText}>Ver foto completa</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                ) : null}
+
+                {(item.latitude != null && item.longitude != null) && (
+                  <Text style={styles.noteLocation}>Ubicacion registrada</Text>
+                )}
+
+                <Text style={styles.noteDate}>
+                  {new Date(item.createdAt).toLocaleDateString('es-CL', {
+                    day: '2-digit', month: 'short', year: 'numeric',
+                  })}
+                </Text>
+
+                <View style={styles.noteActions}>
+                  <Pressable
+                    style={styles.editBtn}
+                    onPress={() => handleEdit({
+                      id: item.id,
+                      title: item.title,
+                      content: item.content,
+                      categoryId: item.categoryId,
+                    })}
+                  >
+                    <Text style={styles.editBtnText}>Editar</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.deleteBtn}
+                    onPress={() => setDeletingNoteId(item.id)}
+                  >
+                    <Text style={styles.deleteBtnText}>Eliminar</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+          />
+        </>
+      )}
+
+      {/* EDIT MODAL */}
+      <Modal visible={!!editingNote} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Editar nota</Text>
-
             <TextInput
+              style={styles.input}
               value={editTitle}
               onChangeText={setEditTitle}
-              placeholder="Título"
-              placeholderTextColor="#6B7E95"
-              style={styles.input}
+              placeholder="Titulo"
+              placeholderTextColor="#9CA3AF"
             />
             <TextInput
+              style={[styles.input, styles.multiline]}
               value={editContent}
               onChangeText={setEditContent}
               placeholder="Contenido"
-              placeholderTextColor="#6B7E95"
-              style={[styles.input, styles.contentInput]}
+              placeholderTextColor="#9CA3AF"
               multiline
-              numberOfLines={4}
-              textAlignVertical="top"
             />
-
-            <ScrollView style={styles.modalCategoryScroll} horizontal showsHorizontalScrollIndicator={false}>
+            <Text style={styles.modalLabel}>Categoria</Text>
+            <View style={styles.editCategoryRow}>
               {categories.map((cat) => (
                 <Pressable
                   key={cat.id}
+                  style={[styles.chip, editCategoryId === cat.id && styles.chipSelected]}
                   onPress={() => setEditCategoryId(cat.id)}
-                  style={[
-                    styles.modalCategoryChip,
-                    editCategoryId === cat.id && styles.modalCategoryChipSelected,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.modalCategoryChipText,
-                      editCategoryId === cat.id && styles.modalCategoryChipTextSelected,
-                    ]}>
-                    {cat.name}
-                  </Text>
+                >
+                  <Text style={styles.chipText}>{cat.name}</Text>
                 </Pressable>
               ))}
-            </ScrollView>
-
+            </View>
             <View style={styles.modalActions}>
-              <Pressable onPress={() => setEditingNote(null)} style={styles.modalCancelButton}>
-                <Text style={styles.modalCancelText}>Cancelar</Text>
+              <Pressable style={styles.cancelBtn} onPress={() => setEditingNote(null)}>
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
               </Pressable>
-              <Pressable
-                onPress={handleUpdateNote}
-                disabled={isSaving}
-                style={[styles.modalSaveButton, isSaving && styles.addButtonDisabled]}>
-                <Text style={styles.modalSaveText}>{isSaving ? '...' : 'Guardar'}</Text>
+              <Pressable style={styles.saveBtn} onPress={handleSaveEdit}>
+                <Text style={styles.saveBtnText}>Guardar</Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
 
+      {/* DELETE MODAL */}
       <Modal visible={deletingNoteId !== null} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Eliminar nota</Text>
-            <Text style={styles.confirmText}>¿Estás seguro de que querés eliminar esta nota?</Text>
-
+          <View style={styles.deleteModalCard}>
+            <Text style={styles.deleteModalTitle}>Estas seguro?</Text>
+            <Text style={styles.deleteModalText}>Esta accion no se puede deshacer.</Text>
             <View style={styles.modalActions}>
-              <Pressable onPress={() => setDeletingNoteId(null)} style={styles.modalCancelButton}>
-                <Text style={styles.modalCancelText}>Cancelar</Text>
+              <Pressable style={styles.cancelBtn} onPress={() => setDeletingNoteId(null)}>
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
               </Pressable>
-              <Pressable
-                onPress={confirmDeleteNote}
-                style={[styles.modalSaveButton, styles.deleteConfirmButton]}>
-                <Text style={styles.modalSaveText}>Eliminar</Text>
+              <Pressable style={styles.confirmDeleteBtn} onPress={handleConfirmDelete}>
+                <Text style={styles.confirmDeleteText}>Eliminar</Text>
               </Pressable>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* FULLSCREEN IMAGE MODAL */}
+      <Modal visible={fullScreenImage !== null} animationType="fade" transparent>
+        <View style={styles.fullscreenOverlay}>
+          <Pressable style={styles.fullscreenClose} onPress={() => setFullScreenImage(null)}>
+            <Text style={styles.fullscreenCloseText}>Cerrar</Text>
+          </Pressable>
+          {fullScreenImage && (
+            <Image
+              source={{ uri: fullScreenImage }}
+              style={styles.fullscreenImage}
+              resizeMode="contain"
+            />
+          )}
         </View>
       </Modal>
     </View>
@@ -376,319 +444,152 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F0F5FB',
-    padding: 16,
-  },
-  title: {
-    color: '#11243A',
-    fontSize: 26,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  subtitle: {
-    color: '#4E647D',
-    fontSize: 14,
-    marginTop: 6,
-    marginBottom: 12,
-  },
-  card: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#D7E3F0',
-  },
-  formScroll: {
-    marginBottom: 8,
+  screen: { flex: 1, backgroundColor: '#F3F4F6', paddingHorizontal: 16, paddingTop: 12 },
+  welcome: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 12 },
+  center: { alignItems: 'center', marginTop: 40 },
+  error: { color: '#DC2626', fontSize: 14, marginBottom: 8 },
+  retryBtn: { backgroundColor: '#2563EB', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 8 },
+  retryText: { color: '#FFFFFF', fontWeight: '600' },
+  createCard: {
+    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16,
+    marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05,
+    shadowRadius: 8, elevation: 2, gap: 10,
   },
   input: {
-    backgroundColor: '#F4F9FF',
-    borderColor: '#CFE0F2',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#0F223B',
-    fontSize: 14,
-    marginBottom: 8,
+    borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: '#111827',
   },
-  contentInput: {
-    minHeight: 70,
-    paddingTop: 10,
-  },
+  multiline: { minHeight: 70, textAlignVertical: 'top' },
   categorySelector: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#F4F9FF',
-    borderColor: '#CFE0F2',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginBottom: 8,
+    borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 12,
   },
-  categorySelectorText: {
-    color: '#0F223B',
-    fontSize: 14,
+  categorySelectorText: { fontSize: 15, color: '#111827' },
+  categoryList: {
+    borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10,
+    padding: 8, backgroundColor: '#F9FAFB', gap: 4,
   },
-  categorySelectorPlaceholder: {
-    color: '#6B7E95',
-    fontSize: 14,
-  },
-  arrow: {
-    color: '#6B7E95',
-    fontSize: 10,
-  },
-  categoryDropdown: {
-    backgroundColor: '#F4F9FF',
-    borderColor: '#CFE0F2',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 6,
-    marginBottom: 8,
-  },
-  categoryOption: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-  },
-  categoryOptionSelected: {
-    backgroundColor: '#1A4B8F',
-  },
-  categoryOptionText: {
-    color: '#0F223B',
-    fontSize: 14,
-  },
-  categoryOptionTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  newCategoryLink: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-  },
-  newCategoryLinkText: {
-    color: '#1A4B8F',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  newCategoryRow: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
+  categoryOption: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 },
+  categoryOptionSelected: { backgroundColor: '#DBEAFE' },
+  categoryOptionText: { fontSize: 14, color: '#111827' },
+  addCategoryBtn: { paddingVertical: 8, paddingHorizontal: 10 },
+  addCategoryText: { color: '#2563EB', fontWeight: '600', fontSize: 14 },
+  newCategoryRow: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 4 },
   newCategoryInput: {
-    flex: 1,
-    marginBottom: 0,
+    flex: 1, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, color: '#111827',
   },
-  addCategoryButton: {
-    backgroundColor: '#1A4B8F',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+  saveCategoryBtn: {
+    backgroundColor: '#2563EB', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
   },
-  addCategoryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 13,
+  saveCategoryText: { color: '#FFFFFF', fontWeight: '600', fontSize: 13 },
+  imageRow: { flexDirection: 'row', gap: 10 },
+  imageBtn: {
+    flex: 1, backgroundColor: '#F3F4F6', borderRadius: 10,
+    paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB',
   },
-  addButton: {
-    backgroundColor: '#1A4B8F',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 4,
+  imageBtnText: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  permissionError: { color: '#DC2626', fontSize: 13 },
+  previewRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  preview: { width: 80, height: 60, borderRadius: 8 },
+  removeImageBtn: { paddingVertical: 4 },
+  removeImageText: { color: '#DC2626', fontSize: 13, fontWeight: '600' },
+  gpsBtn: {
+    backgroundColor: '#F3F4F6', borderRadius: 10, paddingVertical: 10,
+    alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB',
   },
-  addButtonPressed: {
-    opacity: 0.8,
+  gpsBtnLoading: { opacity: 0.6 },
+  gpsBtnText: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  locationRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#ECFDF5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
   },
-  addButtonDisabled: {
-    opacity: 0.5,
+  locationText: { fontSize: 13, color: '#065F46', fontWeight: '500' },
+  createBtn: {
+    backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 14, alignItems: 'center',
   },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
+  createBtnDisabled: { opacity: 0.6 },
+  createBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#6B7280', marginBottom: 8 },
+  empty: { textAlign: 'center', color: '#9CA3AF', marginTop: 24, fontSize: 14 },
+  noteCard: {
+    backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14,
+    marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.04,
+    shadowRadius: 6, elevation: 1, gap: 6,
   },
-  counterText: {
-    color: '#547091',
-    fontSize: 13,
-    marginBottom: 10,
-    marginTop: 4,
-  },
-  centerState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  errorText: {
-    color: '#9E2A2A',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: '#1A4B8F',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  listContent: {
-    paddingBottom: 18,
-  },
-  emptyText: {
-    color: '#6A819B',
-    textAlign: 'center',
-    marginTop: 30,
-    fontSize: 14,
-  },
-  noteItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ECF2F9',
-    gap: 4,
-  },
-  noteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  noteTitle: {
-    color: '#123152',
-    fontSize: 15,
-    fontWeight: '700',
-    flex: 1,
-    marginRight: 8,
-  },
+  noteHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  noteTitle: { fontSize: 16, fontWeight: '700', color: '#111827', flex: 1 },
   categoryBadge: {
-    backgroundColor: '#E3EDF7',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    backgroundColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 999, marginLeft: 8,
   },
-  categoryBadgeText: {
-    color: '#1A4B8F',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  noteContent: {
-    color: '#4E647D',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  noteDate: {
-    color: '#8A9FB5',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  noteActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 6,
-  },
-  editButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  editButtonText: {
-    color: '#1A4B8F',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  deleteButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  deleteText: {
-    color: '#B73535',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  categoryBadgeText: { fontSize: 11, color: '#1D4ED8', fontWeight: '600' },
+  noteContent: { fontSize: 14, color: '#4B5563', lineHeight: 20 },
+  noteImage: { width: '100%', height: 160, borderRadius: 8, marginTop: 4 },
+  noteLocation: { fontSize: 12, color: '#059669', fontWeight: '500' },
+  noteDate: { fontSize: 12, color: '#9CA3AF' },
+  noteActions: { flexDirection: 'row', gap: 10 },
+  editBtn: { backgroundColor: '#F3F4F6', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+  editBtnText: { color: '#2563EB', fontWeight: '600', fontSize: 13 },
+  deleteBtn: { backgroundColor: '#FEF2F2', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+  deleteBtnText: { color: '#DC2626', fontWeight: '600', fontSize: 13 },
   modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    padding: 24,
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center',
+    alignItems: 'center', padding: 24,
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
+    backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20,
+    width: '100%', maxWidth: 400, gap: 12,
   },
-  modalTitle: {
-    color: '#11243A',
-    fontSize: 20,
-    fontWeight: '800',
-    marginBottom: 14,
+  modalTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
+  modalLabel: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  editCategoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: {
+    backgroundColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB',
   },
-  modalCategoryScroll: {
-    marginBottom: 16,
-    maxHeight: 40,
+  chipSelected: { backgroundColor: '#DBEAFE', borderColor: '#2563EB' },
+  chipText: { fontSize: 13, color: '#111827' },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
+  cancelBtn: { backgroundColor: '#F3F4F6', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+  cancelBtnText: { color: '#374151', fontWeight: '600', fontSize: 14 },
+  saveBtn: { backgroundColor: '#2563EB', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+  saveBtnText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
+  deleteModalCard: {
+    backgroundColor: '#FFFFFF', borderRadius: 20, padding: 24,
+    width: '100%', maxWidth: 320, gap: 8,
   },
-  modalCategoryChip: {
-    backgroundColor: '#F4F9FF',
-    borderColor: '#CFE0F2',
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginRight: 8,
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', color: '#111827', textAlign: 'center' },
+  deleteModalText: { fontSize: 14, color: '#6B7280', textAlign: 'center', marginBottom: 4 },
+  confirmDeleteBtn: { backgroundColor: '#DC2626', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+  confirmDeleteText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
+  noteImageContainer: { position: 'relative' as const },
+  viewFullOverlay: {
+    position: 'absolute' as const,
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
   },
-  modalCategoryChipSelected: {
-    backgroundColor: '#1A4B8F',
-    borderColor: '#1A4B8F',
+  viewFullText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
+  fullscreenOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  modalCategoryChipText: {
-    color: '#0F223B',
-    fontSize: 13,
-  },
-  modalCategoryChipTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  modalCancelButton: {
-    paddingVertical: 10,
+  fullscreenClose: {
+    position: 'absolute' as const,
+    top: 50,
+    right: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     paddingHorizontal: 16,
-    borderRadius: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    zIndex: 1,
   },
-  modalCancelText: {
-    color: '#6B7E95',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalSaveButton: {
-    backgroundColor: '#1A4B8F',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-  },
-  modalSaveText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  confirmText: {
-    color: '#4E647D',
-    fontSize: 14,
-    marginBottom: 20,
-  },
-  deleteConfirmButton: {
-    backgroundColor: '#B73535',
-  },
+  fullscreenCloseText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  fullscreenImage: { width: '100%', height: '80%' },
 });

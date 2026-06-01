@@ -1,26 +1,50 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
-
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Redirect } from 'expo-router';
 import { useAuth } from '@/components/AuthContext';
 
 export default function LoginScreen() {
-  const { signIn } = useAuth();
+  const { token, login, register, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
 
-  const handleLogin = () => {
+  if (loading) {
+    return (
+      <View style={[styles.screen, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#36D9B7" />
+      </View>
+    );
+  }
+
+  if (token) {
+    return <Redirect href="/(tabs)" />;
+  }
+
+  const handleSubmit = async () => {
     const trimmedEmail = email.trim();
 
     if (!trimmedEmail || !password) {
-      setErrorMessage('Ingrese correo y contraseña para continuar.');
+      setErrorMessage('Ingrese correo y contraseña.');
       return;
     }
 
-    signIn(trimmedEmail);
     setErrorMessage('');
-    router.replace('/(tabs)');
+
+    try {
+      if (isRegistering) {
+        if (password.length < 8) {
+          setErrorMessage('La contraseña debe tener al menos 8 caracteres.');
+          return;
+        }
+        await register(trimmedEmail, password);
+      } else {
+        await login(trimmedEmail, password);
+      }
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : 'Error inesperado');
+    }
   };
 
   return (
@@ -29,7 +53,7 @@ export default function LoginScreen() {
       <View style={styles.bgAuroraBottom} />
 
       <View style={styles.card}>
-        <Text style={styles.title}>Inicia sesión</Text>
+        <Text style={styles.title}>{isRegistering ? 'Crear cuenta' : 'Inicia sesión'}</Text>
         <View style={styles.form}>
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -55,8 +79,16 @@ export default function LoginScreen() {
 
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-          <Pressable style={styles.primaryButton} onPress={handleLogin}>
-            <Text style={styles.primaryButtonText}>Entrar</Text>
+          <Pressable style={styles.primaryButton} onPress={handleSubmit}>
+            <Text style={styles.primaryButtonText}>
+              {isRegistering ? 'Registrarse' : 'Entrar'}
+            </Text>
+          </Pressable>
+
+          <Pressable onPress={() => { setIsRegistering(!isRegistering); setErrorMessage(''); }}>
+            <Text style={styles.helperText}>
+              {isRegistering ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? Regístrate'}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -89,15 +121,6 @@ const styles = StyleSheet.create({
     bottom: -150,
     right: -130,
   },
-  bgOrb: {
-    position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: '#68E3FF33',
-    top: 130,
-    right: 28,
-  },
   card: {
     backgroundColor: '#10192F',
     borderRadius: 24,
@@ -111,31 +134,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 14 },
     elevation: 12,
   },
-  eyebrow: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#1E2D4C',
-    color: '#A6C2F8',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    marginBottom: 12,
-  },
   title: {
     color: '#F2F7FF',
     fontSize: 34,
     fontWeight: '800',
     marginBottom: 6,
     textAlign: 'center',
-  },
-  subtitle: {
-    color: '#9BB1D8',
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-    marginBottom: 18,
   },
   form: {
     gap: 9,

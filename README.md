@@ -213,6 +213,14 @@ expo start -c
 - [Expo Router](https://docs.expo.dev/routing/introduction/)
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/)
 
+## Uso de IA
+
+Se utilizo DeepSeek (OpenCode) como asistente de desarrollo. La IA contribuyo en:
+
+- Sugerir workarounds para problemas de compatibilidad web (SecureStore, FormData)
+- Asistir en la implementacion de hooks, contexto de autenticacion y flujo de upload
+- Asistir en la generación del codigo
+
 ## Licencia
 
 Este proyecto es privado
