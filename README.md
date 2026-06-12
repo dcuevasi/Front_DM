@@ -75,17 +75,26 @@ npm run web
 
 ## Configuracion de Conexion al Backend
 
-Para conectar con el backend, configura la variable de entorno:
+La aplicacion se conecta a una API REST. Configura la variable de entorno `EXPO_PUBLIC_API_URL` segun el entorno:
+
+### Produccion
 
 ```bash
-export EXPO_PUBLIC_API_URL="http://localhost:3000"
-npm start
+$env:EXPO_PUBLIC_API_URL="https://back-ds-m64j.onrender.com"
+npx expo start --web --clear
 ```
 
-O en una sola linea:
+### Desarrollo local
 
 ```bash
-EXPO_PUBLIC_API_URL="http://localhost:3000" npm start
+$env:EXPO_PUBLIC_API_URL="http://localhost:3000"
+npx expo start --web --clear
+```
+
+O en una sola linea (Linux/Mac):
+
+```bash
+EXPO_PUBLIC_API_URL="https://back-ds-m64j.onrender.com" npx expo start --web
 ```
 
 ## Estructura del Proyecto
@@ -166,16 +175,21 @@ expo publish
 
 ## API Backend
 
-La aplicacion se conecta a los siguientes endpoints:
+La aplicacion se conecta a la API REST desplegada en **https://back-ds-m64j.onrender.com**. Endpoints:
 
-- `GET /health` - Verificar estado del servidor
-- `GET /notes` - Obtener todas las notas
-- `GET /notes/:id` - Obtener nota por ID
-- `POST /notes` - Crear nueva nota
-- `PUT /notes/:id` - Actualizar nota
-- `DELETE /notes/:id` - Eliminar nota
+| Metodo | Ruta | Auth | Descripcion |
+|---|---|---|---|
+| POST | /auth/register | No | Registro de usuario |
+| POST | /auth/login | No | Inicio de sesion |
+| GET | /notes | Si | Listar notas del usuario |
+| GET | /notes/:id | Si | Obtener nota por ID |
+| POST | /notes | Si | Crear nota (con foto y coordenadas opcionales) |
+| PATCH | /notes/:id | Si | Editar nota |
+| DELETE | /notes/:id | Si | Eliminar nota |
+| POST | /notes/upload | Si | Subir imagen |
+| GET | /categories | Si | Listar categorias |
 
-Ver [backend-ipss](../backend-ipss) para mas detalles sobre la API.
+Ver [backend-ipss](../backend-ipss) para mas detalles.
 
 ## Solucion de Problemas
 
@@ -219,7 +233,6 @@ Se utilizo DeepSeek (OpenCode) como asistente de desarrollo. La IA contribuyo en
 
 - Sugerir workarounds para problemas de compatibilidad web (SecureStore, FormData)
 - Asistir en la implementacion de hooks, contexto de autenticacion y flujo de upload
-- Asistir en la generación del codigo
 
 ## Licencia
 
